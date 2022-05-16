@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Wedge
 import numpy as np
 import shutil
-from scipy.misc import imread, imsave
+from imageio import imread, imsave
 from scipy.signal import medfilt, argrelmin
 from skimage.transform import iradon, iradon_sart, downscale_local_mean
 

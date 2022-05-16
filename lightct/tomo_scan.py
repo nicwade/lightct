@@ -11,7 +11,7 @@ import os
 import cv2
 import matplotlib.pyplot as plt
 from matplotlib.patches import Wedge
-from scipy.misc import imsave
+from imageio import imsave
 import numpy as np
 from skimage import color
 
