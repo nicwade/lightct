@@ -20,16 +20,17 @@ from lightct.load_scan import LoadProjections
 plt.style.use('ggplot')
 
 def image_acquisition(num_proj, camera_port=0, wait=0,
-                      hsv='v', fancy_out=True):
+                      hsv='v', fancy_out=False):
     hsv_dict = {'h': 0, 's': 1, 'v': 2}
     camera = cv2.VideoCapture(camera_port)
     camera.set(3, 2000)
     camera.set(4, 2000)
+
     try:
         dims = camera.read()[1][:, :, 2].shape + (num_proj, )
     except TypeError:
         error = ('Camera returning None. Check camera settings (port) and'
-                 ' ensure camera is not being run by other software.')
+                  ' ensure camera is not being run by other software.')
         raise TypeError(error)
     im_stack = np.zeros(dims)
 
@@ -48,16 +49,16 @@ def image_acquisition(num_proj, camera_port=0, wait=0,
     for i in range(num_proj):
         _, im = camera.read()
         im_stack[:, :, i] = color.rgb2hsv(im)[:, :, hsv_dict[hsv]]
-        if fancy_out:
 
+        if fancy_out:
             patch.set_theta1(90 - 360 * (i+1) /num_proj)
             progress = 100 * (i+1) / num_proj
             t.set_text('%02d%%' % progress)
             plt.pause(0.001)
         else:
             sys.stdout.write('\rProgress: [{0:20s}] {1:.0f}%'.format('#' *
-                             int(20*(i + 1) / num_proj),
-                             100*((i + 1)/num_proj)))
+                              int(20*(i + 1) / num_proj),
+                              100*((i + 1)/num_proj)))
             sys.stdout.flush()
         time.sleep(wait)
 
@@ -65,7 +66,7 @@ def image_acquisition(num_proj, camera_port=0, wait=0,
     if fancy_out:
         plt.close()
     return im_stack
-
+    
 
 class TomoScan(LoadProjections):
     
@@ -97,6 +98,7 @@ class TomoScan(LoadProjections):
             save_folder = os.path.join(self.folder, 'projections')
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder)
+            print("\n Raw data saved in: ", folder)
             for idx in range(self.im_stack.shape[-1]):
                 f_path = os.path.join(save_folder, '%04d.tif' % idx)
                 imsave(f_path, self.im_stack[:, :, idx])

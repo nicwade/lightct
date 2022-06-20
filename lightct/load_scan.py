@@ -14,6 +14,7 @@ import shutil
 from imageio import imread, imsave
 from scipy.signal import medfilt, argrelmin
 from skimage.transform import iradon, iradon_sart, downscale_local_mean
+from scipy.ndimage.filters import median_filter
 
 from lightct.plot_funcs import recentre_plot, SetAngleInteract
 
@@ -220,10 +221,11 @@ class LoadProjections(object):
                 ax.yaxis.set_ticklabels([])
             fig.tight_layout()
             plt.show()
-                
+            
+
     def reconstruct(self, downsample=(4, 4), crop=True, median_filter=False, 
                     kernel=9, recon_alg='fbp', sart_iters=1, 
-                    crop_circle=False, save=True, fancy_out=True):
+                    crop_circle=False, save=True, fancy_out=False, average=False):
         """
         Reconstruct the data using a radon transform. Reconstructed slices
         saved in folder specified upon class creation.
@@ -233,19 +235,27 @@ class LoadProjections(object):
         # pre_filter: If True apply median filter to data before reconstructing
         # kernel:     Kernel size to use for median filter
         """
-            
+
         if self.cor_offset >= 0:
             images = self.im_stack[:, self.cor_offset:]
         else:
             images = self.im_stack[:, :self.cor_offset]
-            
-        images = images[:, :, self.p0:self.num_images + self.p0]
+
+        # option to average over multiple rotations of images
+        if average:
+            rots = (images.shape[-1]-self.p0) // self.num_images
+            new_shape = images.shape[0:2] + (self.num_images, rots)
+            images = np.reshape(images[:,:,self.p0:rots*self.num_images + self.p0], new_shape)
+            images = images.mean(axis=3)
+        else:
+            images = images[:, :, self.p0:self.num_images + self.p0]
+
         
         if crop:
             left, right, top, bottom = self.crop
             images = images[top:bottom, left:right]
             
-        images = downscale_local_mean(images, downsample + (1, ))
+            images = downscale_local_mean(images, downsample + (1, ))
         recon_height, recon_width = images.shape[:2]
         self.recon_data = np.zeros((recon_width, recon_width, recon_height))
 
@@ -294,14 +304,18 @@ class LoadProjections(object):
                 sys.stdout.flush()
             sino_tmp = np.squeeze(images[j, :, :])
             
-            if recon_alg is 'sart':
+            if recon_alg == 'sart':
                 image_tmp = iradon_sart(sino_tmp, theta=self.angles)
                 for i in range(sart_iters - 1):
                     image_tmp = iradon_sart(sino_tmp, theta=self.angles, 
                                             image=image_tmp)
+            elif recon_alg == 'visualhulls':
+                image_tmp = self.visualhulls_recon(sino_tmp)
+                
             else:
+                #sino_tmp = self.binarise_sino(sino_tmp)
                 image_tmp = iradon(sino_tmp, theta=self.angles, 
-                                   filter=None, circle=True)
+                                   filter_name=None, circle=True)
 #            if crop_circle:
 #                image_tmp = image_tmp[w0:wf, w0:wf]
                 
@@ -319,6 +333,41 @@ class LoadProjections(object):
                 image_tmp = self.recon_data[:, :, j]
                 imsave(os.path.join(save_folder, '%04d.tif' % j), image_tmp)
 
+            import h5py
+            with h5py.File(os.path.join(save_folder, 'recon2.h5'), 'w') as f:
+                f['data'] = self.recon_data
+
         if fancy_out:
             plt.close()
 
+
+    def visualhulls_recon(self, sino):
+        sino = -np.log(sino)
+        sino = self.binarise_sino(np.transpose(sino))
+        data_shape = (sino.shape[1], sino.shape[1])
+        centre = data_shape[0] // 2
+        full = np.ones(data_shape)        
+        for i in range(self.num_images):
+            mapping_array = self._mapping_array(
+                data_shape, centre, np.deg2rad(self.angles[i]))
+            mapping_array = np.clip(mapping_array.astype('int') + centre, 0,
+                                     sino.shape[1]-1).astype('int')
+            mask = sino[i, :][mapping_array]
+            full -= 1-mask
+        data_range = full.max() - full.min()
+        full += data_range // 4
+        full[full < 0.5] = 0
+        return full
+    
+        
+    def binarise_sino(self, orig_sino):
+        sino = np.zeros_like(orig_sino)
+        sino[orig_sino > 0.5] = 1
+        return median_filter(sino, size=2)
+        
+
+    def _mapping_array(self, data_shape, centre, theta):
+        x, y = np.meshgrid(np.arange(-centre, data_shape[0] - centre),
+                           np.arange(-centre, data_shape[1] - centre))
+        return x*np.cos(theta) - y*np.sin(theta)
+        
