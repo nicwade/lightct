@@ -224,7 +224,7 @@ class LoadProjections(object):
             
 
     def reconstruct(self, downsample=(4, 4), crop=True, median_filter=False, 
-                    kernel=9, recon_alg='fbp', sart_iters=1, 
+                    kernel=9, recon_alg='fbp', sart_iters=1, threshold=0.5,
                     crop_circle=False, save=True, fancy_out=False, average=False):
         """
         Reconstruct the data using a radon transform. Reconstructed slices
@@ -310,7 +310,7 @@ class LoadProjections(object):
                     image_tmp = iradon_sart(sino_tmp, theta=self.angles, 
                                             image=image_tmp)
             elif recon_alg == 'visualhulls':
-                image_tmp = self.visualhulls_recon(sino_tmp)
+                image_tmp = self.visualhulls_recon(sino_tmp, threshold)
                 
             else:
                 #sino_tmp = self.binarise_sino(sino_tmp)
@@ -341,9 +341,9 @@ class LoadProjections(object):
             plt.close()
 
 
-    def visualhulls_recon(self, sino):
-        sino = -np.log(sino)
-        sino = self.binarise_sino(np.transpose(sino))
+    def visualhulls_recon(self, sino, threshold):
+        sino = -np.log(sino + 0.00000001)
+        sino = self.binarise_sino(np.transpose(sino), threshold)
         data_shape = (sino.shape[1], sino.shape[1])
         centre = data_shape[0] // 2
         full = np.ones(data_shape)        
@@ -360,9 +360,9 @@ class LoadProjections(object):
         return full
     
         
-    def binarise_sino(self, orig_sino):
+    def binarise_sino(self, orig_sino, threshold):
         sino = np.zeros_like(orig_sino)
-        sino[orig_sino > 0.5] = 1
+        sino[orig_sino > threshold] = 1  # default threshold is 0.5
         return median_filter(sino, size=2)
         
 
